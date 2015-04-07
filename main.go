@@ -17,10 +17,10 @@ type ReadError struct {
 }
 
 type SecureReader struct {
-	r    io.Reader
-	priv *[32]byte
-	pub  *[32]byte
-	leftoverData []byte
+	r      io.Reader
+	priv   *[32]byte
+	pub    *[32]byte
+	buffer []byte
 }
 
 type SecureWriter struct {
@@ -38,26 +38,35 @@ func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
 	sr.r = r
 	sr.priv = priv
 	sr.pub = pub
-	sr.leftoverData = nil
+	sr.buffer = nil
 	return sr
 }
 
 func (sr *SecureReader) Read(out []byte) (n int, err error) {
-	// Check if there is leftover data from the last read, and if so, return it
-	if sr.leftoverData != nil {
-		var toSend []byte
-		if len(sr.leftoverData) > len(out) {
-			// still too much data, send what we can and stash the rest
-			toSend = sr.leftoverData[0:len(out)]
-			sr.leftoverData = sr.leftoverData[len(out):]
-		} else {
-			toSend = sr.leftoverData
-			sr.leftoverData = nil
+	// If there isn't a buffer, that means it's time to receive the next encrypted message
+	if sr.buffer == nil {
+		readErr := sr.ReadNextEncryptedMessage()
+		if readErr != nil {
+			return 0, readErr
 		}
-		copy(out, toSend)
-		return len(toSend), nil
 	}
 
+	// Send as much data as possible
+	var toSend []byte
+	if len(sr.buffer) > len(out) {
+		// still too much data, send what we can and stash the rest
+		toSend = sr.buffer[0:len(out)]
+		sr.buffer = sr.buffer[len(out):]
+	} else {
+		toSend = sr.buffer
+		sr.buffer = nil
+	}
+	copy(out, toSend)
+	return len(toSend), nil
+}
+
+// Blocking read until the whole encrypted message is received
+func (sr *SecureReader) ReadNextEncryptedMessage() error {
 	// Read the payload size out of the buffer
 	var payloadSize uint32
 	readErr := binary.Read(sr.r, binary.LittleEndian, &payloadSize)
@@ -65,19 +74,15 @@ func (sr *SecureReader) Read(out []byte) (n int, err error) {
 		if readErr != io.EOF {
 			fmt.Println("Error reading payloadSize from buffer", readErr)
 		}
-		return 0, readErr
+		return readErr
 	}
 
 	// Read the payload
 	data := make([]byte, payloadSize)
-	nRead, readErr := io.ReadFull(sr.r, data)
+	_, readErr = io.ReadFull(sr.r, data)
 	if readErr != nil {
 		fmt.Println("Error reading payload from buffer", readErr)
-		return 0, readErr
-	}
-	if uint32(nRead) < payloadSize {
-		fmt.Printf("Not enough bytes read from buffer (wanted: %d, got: %d)\n", payloadSize, nRead)
-		return nRead, &ReadError{"Didn't read enough data from buffer"}
+		return readErr
 	}
 
 	// Unpack the nonce and encrypted message
@@ -89,18 +94,11 @@ func (sr *SecureReader) Read(out []byte) (n int, err error) {
 	copy(nonceBuf[:], nonce)
 	decrypted, success := box.Open(make([]byte, 0), encrypted, &nonceBuf, sr.pub, sr.priv)
 	if success {
-		var toSend []byte
-		if len(decrypted) > len(out) {
-			toSend = decrypted[0:len(out)]
-			sr.leftoverData = decrypted[len(out):]
-		} else {
-			toSend = decrypted
-		}
-		copy(out, toSend)
-		return len(toSend), nil
+		sr.buffer = decrypted
+		return nil
 	} else {
 		fmt.Println("Error decrypting message")
-		return 0, &ReadError{"Error decrypting message"}
+		return &ReadError{"Error decrypting message"}
 	}
 }
 
