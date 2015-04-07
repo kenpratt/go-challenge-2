@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"crypto/rand"
 	"encoding/binary"
 	"flag"
@@ -21,6 +20,7 @@ type SecureReader struct {
 	r    io.Reader
 	priv *[32]byte
 	pub  *[32]byte
+	leftoverData []byte
 }
 
 type SecureWriter struct {
@@ -38,36 +38,43 @@ func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
 	sr.r = r
 	sr.priv = priv
 	sr.pub = pub
+	sr.leftoverData = nil
 	return sr
 }
 
 func (sr *SecureReader) Read(out []byte) (n int, err error) {
-	buf := bufio.NewReader(sr.r)
+	// Check if there is leftover data from the last read, and if so, return it
+	if sr.leftoverData != nil {
+		var toSend []byte
+		if len(sr.leftoverData) > len(out) {
+			// still too much data, send what we can and stash the rest
+			toSend = sr.leftoverData[0:len(out)]
+			sr.leftoverData = sr.leftoverData[len(out):]
+		} else {
+			toSend = sr.leftoverData
+			sr.leftoverData = nil
+		}
+		copy(out, toSend)
+		return len(toSend), nil
+	}
 
 	// Read the payload size out of the buffer
 	var rawPayloadSize uint64
-	bufErr := binary.Read(buf, binary.LittleEndian, &rawPayloadSize)
-	if bufErr != nil {
-		if bufErr != io.EOF {
-			fmt.Println("Error reading payloadSize from buffer", bufErr)
+	readErr := binary.Read(sr.r, binary.LittleEndian, &rawPayloadSize)
+	if readErr != nil {
+		if readErr != io.EOF {
+			fmt.Println("Error reading payloadSize from buffer", readErr)
 		}
-		return 0, bufErr
+		return 0, readErr
 	}
 	var payloadSize int = int(rawPayloadSize)
 
-	// Ensure there's enough data to read
-	// TODO Instead of returning error, try sleeping until there's more data?
-	if buf.Buffered() < int(payloadSize) {
-		fmt.Printf("Not enough data in buffer to read (want: %d, have: %d)\n", payloadSize, buf.Buffered())
-		return 0, &ReadError{"Not enough data to read message"}
-	}
-
 	// Read the payload
 	data := make([]byte, payloadSize)
-	nRead, bufErr := buf.Read(data)
-	if bufErr != nil {
-		fmt.Println("Error reading payload from buffer", bufErr)
-		return 0, bufErr
+	nRead, readErr := io.ReadFull(sr.r, data)
+	if readErr != nil {
+		fmt.Println("Error reading payload from buffer", readErr)
+		return 0, readErr
 	}
 	if nRead < payloadSize {
 		fmt.Printf("Not enough bytes read from buffer (wanted: %d, got: %d)\n", payloadSize, nRead)
@@ -83,9 +90,17 @@ func (sr *SecureReader) Read(out []byte) (n int, err error) {
 	copy(nonceBuf[:], nonce)
 	decrypted, success := box.Open(make([]byte, 0), encrypted, &nonceBuf, sr.pub, sr.priv)
 	if success {
-		copy(out, decrypted)
-		return len(decrypted), nil
+		var toSend []byte
+		if len(decrypted) > len(out) {
+			toSend = decrypted[0:len(out)]
+			sr.leftoverData = decrypted[len(out):]
+		} else {
+			toSend = decrypted
+		}
+		copy(out, toSend)
+		return len(toSend), nil
 	} else {
+		fmt.Println("Error decrypting message")
 		return 0, &ReadError{"Error decrypting message"}
 	}
 }
@@ -105,25 +120,17 @@ func (sw *SecureWriter) Write(message []byte) (n int, err error) {
 	payloadSize := len(encrypted)
 
 	// Write payload size to buffer
-	buf := bufio.NewWriter(sw.w)
-	bufErr := binary.Write(buf, binary.LittleEndian, uint64(payloadSize))
-	if bufErr != nil {
-		fmt.Println("Error writing payloadSize to buffer", bufErr)
-		return 0, bufErr
+	writeErr := binary.Write(sw.w, binary.LittleEndian, uint64(payloadSize))
+	if writeErr != nil {
+		fmt.Println("Error writing payloadSize to buffer", writeErr)
+		return 0, writeErr
 	}
 
 	// Write encrypted message to buffer
-	_, bufErr = buf.Write(encrypted)
-	if bufErr != nil {
-		fmt.Println("Error writing encrypted message to buffer", bufErr)
-		return 0, bufErr
-	}
-
-	// Flush the buffer
-	flushErr := buf.Flush()
-	if flushErr != nil {
-		fmt.Println("Error flushing buffer", flushErr)
-		return 0, flushErr
+	_, writeErr = sw.w.Write(encrypted)
+	if writeErr != nil {
+		fmt.Println("Error writing encrypted message to buffer", writeErr)
+		return 0, writeErr
 	}
 
 	return len(message), nil
