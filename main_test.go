@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
+	"golang.org/x/crypto/nacl/box"
 	"io"
 	"io/ioutil"
 	"net"
@@ -182,5 +184,116 @@ func TestSecureDial(t *testing.T) {
 	expected := "hello world\n"
 	if _, err := fmt.Fprintf(conn, expected); err != nil {
 		t.Fatal(err)
+	}
+}
+
+//
+// Extra tests
+//
+
+func TestReadWriterMultiPing(t *testing.T) {
+	priv, pub := &[32]byte{'p', 'r', 'i', 'v'}, &[32]byte{'p', 'u', 'b'}
+
+	r, w := io.Pipe()
+	secureR := NewSecureReader(r, priv, pub)
+	secureW := NewSecureWriter(w, priv, pub)
+
+	// Encrypt hello world
+	go func() {
+		for i := 0; i < 10; i++ {
+			fmt.Fprintf(secureW, "hello world %d\n", i)
+		}
+		w.Close()
+	}()
+
+	buf, err := ioutil.ReadAll(secureR)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure we have hello world back
+	expected := "hello world 0\nhello world 1\nhello world 2\nhello world 3\nhello world 4\nhello world 5\nhello world 6\nhello world 7\nhello world 8\nhello world 9\n"
+	if res := string(buf); res != expected {
+		t.Fatalf("Unexpected result: %s != %s", res, expected)
+	}
+}
+
+func TestAsymmetricalDecryptionWithBox(t *testing.T) {
+	cpub, cpriv, _ := box.GenerateKey(rand.Reader)
+	spub, spriv, _ := box.GenerateKey(rand.Reader)
+
+	nonce := &[24]byte{'a'}
+	message := []byte{'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', '\n'}
+
+	encrypted := box.Seal([]byte{}, message, nonce, spub, cpriv)
+	buf, _ := box.Open([]byte{}, encrypted, nonce, cpub, spriv)
+
+	if res := string(buf); res != "hello world\n" {
+		t.Fatalf("Unexpected result: %s != %s", res, "hello world")
+	}
+}
+
+func TestAsymmetricalDecryption(t *testing.T) {
+	cpub, cpriv, _ := box.GenerateKey(rand.Reader)
+	spub, spriv, _ := box.GenerateKey(rand.Reader)
+
+	r, w := io.Pipe()
+	secureW := NewSecureWriter(w, cpriv, spub)
+	secureR := NewSecureReader(r, spriv, cpub)
+
+	go func() {
+		fmt.Fprintf(secureW, "hello world\n")
+		w.Close()
+	}()
+
+	// Decrypt message
+	buf := make([]byte, 1024)
+	n, err := secureR.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf = buf[:n]
+
+	if res := string(buf); res != "hello world\n" {
+		t.Fatalf("Unexpected result: %s != %s", res, "hello world")
+	}
+}
+
+func TestAsymmetricalDecryptionEcho(t *testing.T) {
+	cpub, cpriv, _ := box.GenerateKey(rand.Reader)
+	spub, spriv, _ := box.GenerateKey(rand.Reader)
+
+	upR, upW := io.Pipe()
+	downR, downW := io.Pipe()
+
+	secureCW := NewSecureWriter(upW, cpriv, spub)
+	secureCR := NewSecureReader(downR, cpriv, spub)
+
+	secureSW := NewSecureWriter(downW, spriv, cpub)
+	secureSR := NewSecureReader(upR, spriv, cpub)
+
+	go func() {
+		_, err := io.Copy(secureSW, secureSR)
+		if err != nil {
+			t.Fatal(err)
+		}
+		downW.Close()
+	}()
+
+	go func() {
+		fmt.Fprintf(secureCW, "hello world\n")
+		fmt.Fprintf(secureCW, "hello world2\n")
+		upW.Close()
+	}()
+
+	// Read from the underlying transport instead of the decoder
+	buf, err := ioutil.ReadAll(secureCR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure we dont' read the plain text message.
+	expected := "hello world\nhello world2\n"
+	if got := string(buf); got != expected {
+		t.Fatalf("Unexpected result:\nGot:\t\t%s\nExpected:\t%s\n", got, expected)
 	}
 }
