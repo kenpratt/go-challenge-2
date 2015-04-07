@@ -19,11 +19,11 @@ func NewEncryptedConnection(conn net.Conn, priv, pub *[32]byte) io.ReadWriteClos
 	return ec
 }
 
-func (ec *EncryptedConnection) Read(out []byte) (n int, err error) {
+func (ec *EncryptedConnection) Read(out []byte) (int, error) {
 	return ec.sr.Read(out)
 }
 
-func (ec *EncryptedConnection) Write(message []byte) (n int, err error) {
+func (ec *EncryptedConnection) Write(message []byte) (int, error) {
 	return ec.sw.Write(message)
 }
 

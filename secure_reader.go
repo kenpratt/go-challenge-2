@@ -7,6 +7,14 @@ import (
 	"io"
 )
 
+type ReadError struct {
+	Message string
+}
+
+func (e *ReadError) Error() string {
+	return e.Message
+}
+
 type SecureReader struct {
 	r      io.Reader
 	priv   *[32]byte
@@ -23,12 +31,12 @@ func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
 	return sr
 }
 
-func (sr *SecureReader) Read(out []byte) (n int, err error) {
+func (sr *SecureReader) Read(out []byte) (int, error) {
 	// If there isn't a buffer, that means it's time to receive the next encrypted message
 	if sr.buffer == nil {
-		readErr := sr.ReadNextEncryptedMessage()
-		if readErr != nil {
-			return 0, readErr
+		err := sr.ReadNextEncryptedMessage()
+		if err != nil {
+			return 0, err
 		}
 	}
 
@@ -50,20 +58,20 @@ func (sr *SecureReader) Read(out []byte) (n int, err error) {
 func (sr *SecureReader) ReadNextEncryptedMessage() error {
 	// Read the payload size out of the buffer
 	var payloadSize uint32
-	readErr := binary.Read(sr.r, binary.LittleEndian, &payloadSize)
-	if readErr != nil {
-		if readErr != io.EOF {
-			fmt.Println("Error reading payloadSize from buffer", readErr)
+	err := binary.Read(sr.r, binary.LittleEndian, &payloadSize)
+	if err != nil {
+		if err != io.EOF {
+			fmt.Println("Error reading payloadSize from buffer", err)
 		}
-		return readErr
+		return err
 	}
 
 	// Read the payload
 	data := make([]byte, payloadSize)
-	_, readErr = io.ReadFull(sr.r, data)
-	if readErr != nil {
-		fmt.Println("Error reading payload from buffer", readErr)
-		return readErr
+	_, err = io.ReadFull(sr.r, data)
+	if err != nil {
+		fmt.Println("Error reading payload from buffer", err)
+		return err
 	}
 
 	// Unpack the nonce and encrypted message

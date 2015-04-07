@@ -11,19 +11,11 @@ import (
 	"os"
 )
 
-type ReadError struct {
-	What string
-}
-
-func (e *ReadError) Error() string {
-	return e.What
-}
-
 // Dial generates a private/public key pair,
 // connects to the server, perform the handshake
 // and return a reader/writer.
 func Dial(addr string) (io.ReadWriteCloser, error) {
-	// Generate a key/val pair
+	// Generate a pair of keys
 	pub, priv, err := box.GenerateKey(rand.Reader)
 	if err != nil {
 		fmt.Println("Error generating a key pair", err)
@@ -37,14 +29,14 @@ func Dial(addr string) (io.ReadWriteCloser, error) {
 		return nil, err
 	}
 
-	// Write our pub key
+	// Send client's public key to the server
 	_, err = conn.Write(pub[:])
 	if err != nil {
 		fmt.Println("Error sending public key to server", err)
 		return nil, err
 	}
 
-	// Read the server pub key
+	// Read the server's public key
 	var peerPub [32]byte
 	_, err = conn.Read(peerPub[:])
 	if err != nil {
@@ -52,7 +44,7 @@ func Dial(addr string) (io.ReadWriteCloser, error) {
 		return nil, err
 	}
 
-	// Create an encrypted connection that well encrypt all traffic over conn
+	// Create an encrypted connection that well encrypt all traffic using the exchanged keys
 	ec := NewEncryptedConnection(conn, priv, &peerPub)
 	return ec, nil
 }
@@ -67,40 +59,41 @@ func Serve(l net.Listener) error {
 		}
 
 		// Handle the connection in a new goroutine.
-		// The loop then returns to accepting, so that
-		// multiple connections may be served concurrently.
-		go func(c net.Conn) {
-			// Generate a key/val pair
-			pub, priv, err := box.GenerateKey(rand.Reader)
-			if err != nil {
-				fmt.Println("Error generating a key pair", err)
-				conn.Close()
-				return
-			}
-
-			// Read the client pub key
-			var peerPub [32]byte
-			_, err = conn.Read(peerPub[:])
-			if err != nil {
-				fmt.Println("Error reading public key from client", err)
-				conn.Close()
-				return
-			}
-
-			// Write our pub key
-			_, err = conn.Write(pub[:])
-			if err != nil {
-				fmt.Println("Error sending public key to client", err)
-				conn.Close()
-				return
-			}
-
-			// Create encrypted streams, and link them to echo results back to client
-			sr := NewSecureReader(conn, priv, &peerPub)
-			sw := NewSecureWriter(conn, priv, &peerPub)
-			io.Copy(sw, sr)
-		}(conn)
+		go HandleConnection(conn)
 	}
+}
+
+func HandleConnection(conn net.Conn) {
+	// Generate a pair of keys
+	pub, priv, err := box.GenerateKey(rand.Reader)
+	if err != nil {
+		fmt.Println("Error generating a key pair", err)
+		conn.Close()
+		return
+	}
+
+	// Read the client's public key
+	var peerPub [32]byte
+	_, err = conn.Read(peerPub[:])
+	if err != nil {
+		fmt.Println("Error reading public key from client", err)
+		conn.Close()
+		return
+	}
+
+	// Send server's public key to the client
+	_, err = conn.Write(pub[:])
+	if err != nil {
+		fmt.Println("Error sending public key to client", err)
+		conn.Close()
+		return
+	}
+
+	// Create encrypted streams, and link them to echo results back to client
+	sr := NewSecureReader(conn, priv, &peerPub)
+	sw := NewSecureWriter(conn, priv, &peerPub)
+	io.Copy(sw, sr)
+	conn.Close()
 }
 
 func main() {

@@ -22,35 +22,41 @@ func NewSecureWriter(w io.Writer, priv, pub *[32]byte) io.Writer {
 	return sw
 }
 
-func (sw *SecureWriter) Write(message []byte) (n int, err error) {
+func (sw *SecureWriter) Write(message []byte) (int, error) {
+	// Generate a random nonce
+	nonce, err := RandomNonce()
+	if err != nil {
+		fmt.Println("Error generating nonce", err)
+		return 0, err
+	}
+
 	// Convert message to encrypted byte slice with nonce
-	nonce := RandomNonce()
 	encrypted := box.Seal(nonce[:], message, nonce, sw.pub, sw.priv)
 	payloadSize := len(encrypted)
 
 	// Write payload size to buffer
-	writeErr := binary.Write(sw.w, binary.LittleEndian, uint32(payloadSize))
-	if writeErr != nil {
-		fmt.Println("Error writing payloadSize to buffer", writeErr)
-		return 0, writeErr
+	err = binary.Write(sw.w, binary.LittleEndian, uint32(payloadSize))
+	if err != nil {
+		fmt.Println("Error writing payloadSize to buffer", err)
+		return 0, err
 	}
 
 	// Write encrypted message to buffer
-	_, writeErr = sw.w.Write(encrypted)
-	if writeErr != nil {
-		fmt.Println("Error writing encrypted message to buffer", writeErr)
-		return 0, writeErr
+	_, err = sw.w.Write(encrypted)
+	if err != nil {
+		fmt.Println("Error writing encrypted message to buffer", err)
+		return 0, err
 	}
 
 	return len(message), nil
 }
 
-func RandomNonce() *[24]byte {
+func RandomNonce() (*[24]byte, error) {
 	var buf [24]byte
 	_, err := rand.Read(buf[:])
 	if err != nil {
 		fmt.Println("Error generating nonce:", err)
-		return nil
+		return nil, err
 	}
-	return &buf
+	return &buf, nil
 }
