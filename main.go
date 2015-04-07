@@ -59,15 +59,14 @@ func (sr *SecureReader) Read(out []byte) (n int, err error) {
 	}
 
 	// Read the payload size out of the buffer
-	var rawPayloadSize uint64
-	readErr := binary.Read(sr.r, binary.LittleEndian, &rawPayloadSize)
+	var payloadSize uint32
+	readErr := binary.Read(sr.r, binary.LittleEndian, &payloadSize)
 	if readErr != nil {
 		if readErr != io.EOF {
 			fmt.Println("Error reading payloadSize from buffer", readErr)
 		}
 		return 0, readErr
 	}
-	var payloadSize int = int(rawPayloadSize)
 
 	// Read the payload
 	data := make([]byte, payloadSize)
@@ -76,7 +75,7 @@ func (sr *SecureReader) Read(out []byte) (n int, err error) {
 		fmt.Println("Error reading payload from buffer", readErr)
 		return 0, readErr
 	}
-	if nRead < payloadSize {
+	if uint32(nRead) < payloadSize {
 		fmt.Printf("Not enough bytes read from buffer (wanted: %d, got: %d)\n", payloadSize, nRead)
 		return nRead, &ReadError{"Didn't read enough data from buffer"}
 	}
@@ -120,7 +119,7 @@ func (sw *SecureWriter) Write(message []byte) (n int, err error) {
 	payloadSize := len(encrypted)
 
 	// Write payload size to buffer
-	writeErr := binary.Write(sw.w, binary.LittleEndian, uint64(payloadSize))
+	writeErr := binary.Write(sw.w, binary.LittleEndian, uint32(payloadSize))
 	if writeErr != nil {
 		fmt.Println("Error writing payloadSize to buffer", writeErr)
 		return 0, writeErr
