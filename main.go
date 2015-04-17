@@ -59,11 +59,11 @@ func Serve(l net.Listener) error {
 		}
 
 		// Handle the connection in a new goroutine.
-		go HandleConnection(conn)
+		go handleConnection(conn)
 	}
 }
 
-func HandleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// Generate a pair of keys

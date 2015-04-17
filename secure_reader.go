@@ -27,7 +27,7 @@ func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
 }
 
 func (sr *SecureReader) Read(out []byte) (int, error) {
-	// If there isn't a leftover buffer, that means it's time to read the next encrypted message
+	// If there isn't a leftover buffer, then it's time to read the next encrypted message
 	if sr.leftover == nil {
 		err := sr.ReadNextEncryptedMessage()
 		if err != nil {
@@ -51,6 +51,9 @@ func (sr *SecureReader) Read(out []byte) (int, error) {
 }
 
 // Blocking read until the whole encrypted message is received
+// Encrypted messages are in the format:
+//   message = | 4-byte little-endian uint32 for payload size | payload |
+//   payload = | 24-byte nonce | encrypted message |
 func (sr *SecureReader) ReadNextEncryptedMessage() error {
 	// Read the payload size out of the buffer
 	var payloadSize uint32

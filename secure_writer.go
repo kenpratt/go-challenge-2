@@ -20,7 +20,7 @@ func NewSecureWriter(w io.Writer, priv, pub *[32]byte) io.Writer {
 
 func (sw *SecureWriter) Write(message []byte) (int, error) {
 	// Generate a random nonce
-	nonce, err := RandomNonce()
+	nonce, err := randomNonce()
 	if err != nil {
 		fmt.Println("Error generating nonce", err)
 		return 0, err
@@ -47,7 +47,7 @@ func (sw *SecureWriter) Write(message []byte) (int, error) {
 	return len(message), nil
 }
 
-func RandomNonce() (*[24]byte, error) {
+func randomNonce() (*[24]byte, error) {
 	var buf [24]byte
 	_, err := rand.Read(buf[:])
 	if err != nil {
