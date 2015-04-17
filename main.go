@@ -64,11 +64,12 @@ func Serve(l net.Listener) error {
 }
 
 func HandleConnection(conn net.Conn) {
+	defer conn.Close()
+
 	// Generate a pair of keys
 	pub, priv, err := box.GenerateKey(rand.Reader)
 	if err != nil {
 		fmt.Println("Error generating a key pair", err)
-		conn.Close()
 		return
 	}
 
@@ -77,7 +78,6 @@ func HandleConnection(conn net.Conn) {
 	_, err = conn.Read(peerPub[:])
 	if err != nil {
 		fmt.Println("Error reading public key from client", err)
-		conn.Close()
 		return
 	}
 
@@ -85,7 +85,6 @@ func HandleConnection(conn net.Conn) {
 	_, err = conn.Write(pub[:])
 	if err != nil {
 		fmt.Println("Error sending public key to client", err)
-		conn.Close()
 		return
 	}
 
@@ -93,7 +92,6 @@ func HandleConnection(conn net.Conn) {
 	sr := NewSecureReader(conn, priv, &peerPub)
 	sw := NewSecureWriter(conn, priv, &peerPub)
 	io.Copy(sw, sr)
-	conn.Close()
 }
 
 func main() {
