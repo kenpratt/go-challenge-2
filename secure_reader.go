@@ -16,10 +16,10 @@ func (e *ReadError) Error() string {
 }
 
 type SecureReader struct {
-	r      io.Reader
-	priv   *[32]byte
-	pub    *[32]byte
-	buffer []byte
+	r        io.Reader
+	priv     *[32]byte
+	pub      *[32]byte
+	leftover []byte
 }
 
 func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
@@ -27,13 +27,13 @@ func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
 	sr.r = r
 	sr.priv = priv
 	sr.pub = pub
-	sr.buffer = nil
+	sr.leftover = nil
 	return sr
 }
 
 func (sr *SecureReader) Read(out []byte) (int, error) {
-	// If there isn't a buffer, that means it's time to receive the next encrypted message
-	if sr.buffer == nil {
+	// If there isn't a leftover buffer, that means it's time to read the next encrypted message
+	if sr.leftover == nil {
 		err := sr.ReadNextEncryptedMessage()
 		if err != nil {
 			return 0, err
@@ -42,13 +42,14 @@ func (sr *SecureReader) Read(out []byte) (int, error) {
 
 	// Send as much data as possible
 	var toSend []byte
-	if len(sr.buffer) > len(out) {
-		// still too much data, send what we can and stash the rest
-		toSend = sr.buffer[0:len(out)]
-		sr.buffer = sr.buffer[len(out):]
+	if len(sr.leftover) > len(out) {
+		// We have too much data, send what we can and stash the rest in the leftover buffer
+		toSend = sr.leftover[0:len(out)]
+		sr.leftover = sr.leftover[len(out):]
 	} else {
-		toSend = sr.buffer
-		sr.buffer = nil
+		// We can fit everything, so send it and set the leftover buffer to nil
+		toSend = sr.leftover
+		sr.leftover = nil
 	}
 	copy(out, toSend)
 	return len(toSend), nil
@@ -83,7 +84,7 @@ func (sr *SecureReader) ReadNextEncryptedMessage() error {
 	copy(nonceBuf[:], nonce)
 	decrypted, success := box.Open(make([]byte, 0), encrypted, &nonceBuf, sr.pub, sr.priv)
 	if success {
-		sr.buffer = decrypted
+		sr.leftover = decrypted
 		return nil
 	} else {
 		fmt.Println("Error decrypting message")
