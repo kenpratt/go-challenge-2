@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"golang.org/x/crypto/nacl/box"
 	"io"
+	"log"
 )
 
 type ReadError struct {
@@ -60,7 +60,7 @@ func (sr *SecureReader) ReadNextEncryptedMessage() error {
 	err := binary.Read(sr.r, binary.LittleEndian, &payloadSize)
 	if err != nil {
 		if err != io.EOF {
-			fmt.Println("Error reading payloadSize from buffer", err)
+			log.Println("Error reading payloadSize from buffer", err)
 		}
 		return err
 	}
@@ -69,7 +69,7 @@ func (sr *SecureReader) ReadNextEncryptedMessage() error {
 	data := make([]byte, payloadSize)
 	_, err = io.ReadFull(sr.r, data)
 	if err != nil {
-		fmt.Println("Error reading payload from buffer", err)
+		log.Println("Error reading payload from buffer", err)
 		return err
 	}
 
@@ -85,7 +85,7 @@ func (sr *SecureReader) ReadNextEncryptedMessage() error {
 		sr.leftover = decrypted
 		return nil
 	} else {
-		fmt.Println("Error decrypting message")
+		log.Println("Error decrypting message")
 		return &ReadError{"Error decrypting message"}
 	}
 }

@@ -3,9 +3,9 @@ package main
 import (
 	"crypto/rand"
 	"encoding/binary"
-	"fmt"
 	"golang.org/x/crypto/nacl/box"
 	"io"
+	"log"
 )
 
 type SecureWriter struct {
@@ -22,7 +22,7 @@ func (sw *SecureWriter) Write(message []byte) (int, error) {
 	// Generate a random nonce
 	nonce, err := randomNonce()
 	if err != nil {
-		fmt.Println("Error generating nonce", err)
+		log.Println("Error generating nonce", err)
 		return 0, err
 	}
 
@@ -33,14 +33,14 @@ func (sw *SecureWriter) Write(message []byte) (int, error) {
 	// Write payload size to buffer
 	err = binary.Write(sw.w, binary.LittleEndian, uint32(payloadSize))
 	if err != nil {
-		fmt.Println("Error writing payloadSize to buffer", err)
+		log.Println("Error writing payloadSize to buffer", err)
 		return 0, err
 	}
 
 	// Write encrypted message to buffer
 	_, err = sw.w.Write(encrypted)
 	if err != nil {
-		fmt.Println("Error writing encrypted message to buffer", err)
+		log.Println("Error writing encrypted message to buffer", err)
 		return 0, err
 	}
 
@@ -51,7 +51,7 @@ func randomNonce() (*[24]byte, error) {
 	var buf [24]byte
 	_, err := rand.Read(buf[:])
 	if err != nil {
-		fmt.Println("Error generating nonce:", err)
+		log.Println("Error generating nonce:", err)
 		return nil, err
 	}
 	return &buf, nil

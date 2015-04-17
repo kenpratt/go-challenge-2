@@ -18,21 +18,21 @@ func Dial(addr string) (io.ReadWriteCloser, error) {
 	// Generate a pair of keys
 	pub, priv, err := box.GenerateKey(rand.Reader)
 	if err != nil {
-		fmt.Println("Error generating a key pair", err)
+		log.Println("Error generating a key pair", err)
 		return nil, err
 	}
 
 	// Connect to the server
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		fmt.Println("Error connecting to server", err)
+		log.Println("Error connecting to server", err)
 		return nil, err
 	}
 
 	// Send client's public key to the server
 	_, err = conn.Write(pub[:])
 	if err != nil {
-		fmt.Println("Error sending public key to server", err)
+		log.Println("Error sending public key to server", err)
 		return nil, err
 	}
 
@@ -40,7 +40,7 @@ func Dial(addr string) (io.ReadWriteCloser, error) {
 	var peerPub [32]byte
 	_, err = conn.Read(peerPub[:])
 	if err != nil {
-		fmt.Println("Error reading public key from server", err)
+		log.Println("Error reading public key from server", err)
 		return nil, err
 	}
 
@@ -69,7 +69,7 @@ func handleConnection(conn net.Conn) {
 	// Generate a pair of keys
 	pub, priv, err := box.GenerateKey(rand.Reader)
 	if err != nil {
-		fmt.Println("Error generating a key pair", err)
+		log.Println("Error generating a key pair", err)
 		return
 	}
 
@@ -77,14 +77,14 @@ func handleConnection(conn net.Conn) {
 	var peerPub [32]byte
 	_, err = conn.Read(peerPub[:])
 	if err != nil {
-		fmt.Println("Error reading public key from client", err)
+		log.Println("Error reading public key from client", err)
 		return
 	}
 
 	// Send server's public key to the client
 	_, err = conn.Write(pub[:])
 	if err != nil {
-		fmt.Println("Error sending public key to client", err)
+		log.Println("Error sending public key to client", err)
 		return
 	}
 
