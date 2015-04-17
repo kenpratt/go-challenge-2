@@ -12,11 +12,9 @@ type EncryptedConnection struct {
 }
 
 func NewEncryptedConnection(conn net.Conn, priv, pub *[32]byte) io.ReadWriteCloser {
-	ec := new(EncryptedConnection)
-	ec.conn = conn
-	ec.sw = NewSecureWriter(conn, priv, pub)
-	ec.sr = NewSecureReader(conn, priv, pub)
-	return ec
+	sw := NewSecureWriter(conn, priv, pub)
+	sr := NewSecureReader(conn, priv, pub)
+	return &EncryptedConnection{conn, sw, sr}
 }
 
 func (ec *EncryptedConnection) Read(out []byte) (int, error) {

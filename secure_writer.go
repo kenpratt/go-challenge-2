@@ -15,11 +15,7 @@ type SecureWriter struct {
 }
 
 func NewSecureWriter(w io.Writer, priv, pub *[32]byte) io.Writer {
-	sw := new(SecureWriter)
-	sw.w = w
-	sw.priv = priv
-	sw.pub = pub
-	return sw
+	return &SecureWriter{w, priv, pub}
 }
 
 func (sw *SecureWriter) Write(message []byte) (int, error) {

@@ -23,12 +23,7 @@ type SecureReader struct {
 }
 
 func NewSecureReader(r io.Reader, priv, pub *[32]byte) io.Reader {
-	sr := new(SecureReader)
-	sr.r = r
-	sr.priv = priv
-	sr.pub = pub
-	sr.leftover = nil
-	return sr
+	return &SecureReader{r, priv, pub, nil}
 }
 
 func (sr *SecureReader) Read(out []byte) (int, error) {
